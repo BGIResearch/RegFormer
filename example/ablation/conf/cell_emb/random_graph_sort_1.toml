@@ -1,0 +1,71 @@
+
+bimamba_type='none'     #type of bimamba: ['v1','v2','none']
+distributed=false   #current script is unavailable for distributed training, always set to false plz
+MLM=false   #whether to use masked language modeling
+CCE=false   #contrastive cell embedding objective
+CLS=false    #celltype classification objective
+cls_weight=true #using different weights for different classes during loss bp
+
+# ablation params
+run_name='cell_emb_random_graph_sort_blood1'    #name of experiment.
+model_name = "ablation_random_graph_sort"    #['gpt','mamba','bimamba']
+data_name='blood'
+graph_sort=true     #using graph topological sorting
+random_sort=true
+generative_pretraining=true    #using generative token precidtion in pretraining or masked token prediction in pretraining
+only_value_emb=false
+device='cuda:3'   #device for training
+data_path='/home/share/huadjyin/home/s_qiuping1/workspace/RegFormer/example/data/val/456e8b9b-f872-488b-871d-94534090a865.h5ad'
+load_model="/home/share/huadjyin/home/s_qiuping1/workspace/RegFormer/example/model/pt/Pretraining/cellxgene/mamba/ablation_random_graph_sort/"    #from_scratch: "none"
+graph_path='/home/share/huadjyin/home/s_qiuping1/workspace/RegFormer/example/data/graph'
+
+
+epochs=30
+test_size=0.2
+lr=1e-4
+log_interval=10
+save_eval_interval=5
+schedule_ratio=0.9      #ratio of epochs for learning rate schedule
+do_train=true   #Train or inference
+
+seed=42
+dropout=0.2
+batch_size=32
+layer_size=256
+nlayers=4
+nhead=4
+mask_ratio=0
+pre_norm=false  #normalize previously
+freeze=false    #freeze the backbone during finetuning
+amp=true    #Automatic Mixed Precision
+token_emb_freeze=false      #freezing token-emb when predicting value
+sampling_etype='ori'     #choice of edge type when sampling: ['share_pathway_with','interact_with','co_expression','ori']
+layer_mask=false        #using layer mask or not when using graph sort
+layer_emb=true
+
+
+#######dir
+#data_path='/home/share/huadjyin/home/s_qiuping1/workspace/RegFormer/example/data/train/01c93cf6-b695-4e30-a26e-121ae8b16a9e.h5ad'
+#data_path='/home/share/huadjyin/home/s_qiuping1/workspace/RegFormer/example/data/val/de2c780c-1747-40bd-9ccf-9588ec186cee.h5ad'
+#load_model="/home/share/huadjyin/home/s_qiuping1/workspace/RegFormer/example/case/Cell_annotation/blood/ablation_graph_sort/anno_graph_sort_blood1/"    #from_scratch: "none"
+save_dir='/home/share/huadjyin/home/s_qiuping1/workspace/RegFormer/example/case/cell_emb'  #Directory of checkpoint and result to save
+vocab_file='/home/share/huadjyin/home/s_qiuping1/workspace/RegFormer/example/data/vocab.json'
+
+#######data config
+cell_type_column='cell_type'
+gene_column='feature_name'  #set to "none" or specific column-name based on your requirement
+umap_column='none'    #set to "none" or specific column-name based on your requirement
+pca_column='none'      #set to "none" or specific column-name based on your requirement
+data_is_raw=false
+filter_gene_by_counts=false
+DSBN=false
+
+input_emb_style='continuous'    #the style of input emb：['continuous','category','scaling']
+cell_emb_style='attn'   #method for generating cell emb: ['final','cls','avg-pool','w-pol','attn']
+n_bins=51
+append_cls=false    #append <cls> token as first token
+per_seq_batch_sample=false      #whether sort the adata by batch_id
+include_zero_gene=false     #whether include gene with zero expression value
+input_style='binned'       #input representation: ['binned','normed_raw','log1p']
+output_style='binned'       #output representation: ['binned','normed_raw','log1p']
+max_seq_len=1200

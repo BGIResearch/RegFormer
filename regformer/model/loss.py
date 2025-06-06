@@ -13,6 +13,18 @@ def masked_mse_loss(
     return loss / mask.sum()
 
 
+def masked_cross_entry_loss(input: torch.Tensor, target: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+    logits = input.view(-1, input.size(-1))  # (batch_size * seq_len, bin_size)
+    target = target.view(-1)  # (batch_size * seq_len)
+    masked_positions = mask.view(-1)  # (batch_size * seq_len)
+    loss = F.cross_entropy(
+        logits[masked_positions],
+        target[masked_positions].long(),
+        reduction='mean'
+    )
+    return loss
+
+
 def criterion_neg_log_bernoulli(
     input: torch.Tensor, target: torch.Tensor, mask: torch.Tensor
 ) -> torch.Tensor:

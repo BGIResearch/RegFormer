@@ -21,37 +21,42 @@ import torch.distributed as dist
 from mamba_ssm.modules.mamba_simple import Mamba, Block
 from mamba_ssm.utils.generation import GenerationMixin
 from mamba_ssm.utils.hf import load_config_hf, load_state_dict_hf
+
 try:
     from mamba_ssm.ops.triton.layernorm import RMSNorm, layer_norm_fn, rms_norm_fn
 except ImportError:
     RMSNorm, layer_norm_fn, rms_norm_fn = None, None, None
 from regformer.model.BiMamba import BiMamba
 from regformer.model.dsbn import DomainSpecificBatchNorm1d
-from regformer.model.layers import ExprDecoder,ClsDecoder,AdversarialDiscriminator,Similarity,CategoryValueEncoder,ContinuousValueEncoder,BatchLabelEncoder,MVCDecoder
+from regformer.model.layers import ExprDecoder, ClsDecoder, AdversarialDiscriminator, Similarity, CategoryValueEncoder, \
+    ContinuousValueEncoder, BatchLabelEncoder, MVCDecoder, BinExprDecoder, FlashTransformerEncoderLayer
+from torch.nn import TransformerEncoder
+import inspect
+
 
 def create_block(
-    d_model,
-    ssm_cfg=None,
-    norm_epsilon=1e-5,
-    rms_norm=False,
-    residual_in_fp32=False,
-    fused_add_norm=False,
-    layer_idx=None,
-    device=None,
-    dtype=None,
-    if_bimamba=False,
-    bimamba_type="none",
-    if_devide_out=False,
-    init_layer_scale=None,
+        d_model,
+        ssm_cfg=None,
+        norm_epsilon=1e-5,
+        rms_norm=False,
+        residual_in_fp32=False,
+        fused_add_norm=False,
+        layer_idx=None,
+        device=None,
+        dtype=None,
+        if_bimamba=False,
+        bimamba_type="none",
+        if_devide_out=False,
+        init_layer_scale=None,
 ):
     if ssm_cfg is None:
         ssm_cfg = {}
     factory_kwargs = {"device": device, "dtype": dtype}
     if if_bimamba:
-        mixer_cls = partial(BiMamba, bimamba_type=bimamba_type,layer_idx=layer_idx,
-                        if_devide_out=if_devide_out,init_layer_scale=init_layer_scale,**ssm_cfg, **factory_kwargs)
+        mixer_cls = partial(BiMamba, bimamba_type=bimamba_type, layer_idx=layer_idx,
+                            if_devide_out=if_devide_out, init_layer_scale=init_layer_scale, **ssm_cfg, **factory_kwargs)
     else:
-        mixer_cls = partial(Mamba, layer_idx=layer_idx,**ssm_cfg, **factory_kwargs)
+        mixer_cls = partial(Mamba, layer_idx=layer_idx, **ssm_cfg, **factory_kwargs)
     norm_cls = partial(
         nn.LayerNorm if not rms_norm else RMSNorm, eps=norm_epsilon, **factory_kwargs
     )
@@ -68,11 +73,11 @@ def create_block(
 
 # https://github.com/huggingface/transformers/blob/c28d04e9e252a1a099944e325685f14d242ecdcd/src/transformers/models/gpt2/modeling_gpt2.py#L454
 def _init_weights(
-    module,
-    n_layer,
-    initializer_range=0.02,  # Now only used for embedding layer.
-    rescale_prenorm_residual=True,
-    n_residuals_per_layer=1,  # Change to 2 if we have MLP
+        module,
+        n_layer,
+        initializer_range=0.02,  # Now only used for embedding layer.
+        rescale_prenorm_residual=True,
+        n_residuals_per_layer=1,  # Change to 2 if we have MLP
 ):
     if isinstance(module, nn.Linear):
         if module.bias is not None:
@@ -101,23 +106,23 @@ def _init_weights(
 
 class MixerModel(nn.Module):
     def __init__(
-        self,
-        d_model: int,
-        n_layer: int,
-        ssm_cfg=None,
-        norm_epsilon: float = 1e-5,
-        rms_norm: bool = False,
-        initializer_cfg=None,
-        fused_add_norm=False,
-        residual_in_fp32=False,
-        device=None,
-        dtype=None,
+            self,
+            d_model: int,
+            n_layer: int,
+            ssm_cfg=None,
+            norm_epsilon: float = 1e-5,
+            rms_norm: bool = False,
+            initializer_cfg=None,
+            fused_add_norm=False,
+            residual_in_fp32=False,
+            device=None,
+            dtype=None,
     ) -> None:
         factory_kwargs = {"device": device, "dtype": dtype}
         super().__init__()
         self.residual_in_fp32 = residual_in_fp32
 
-        #self.embedding = nn.Embedding(vocab_size, d_model, padding_idx=padding_idx,**factory_kwargs)
+        # self.embedding = nn.Embedding(vocab_size, d_model, padding_idx=padding_idx,**factory_kwargs)
 
         # We change the order of residual and layer norm:
         # Instead of LN -> Attn / MLP -> Add, we do:
@@ -163,14 +168,14 @@ class MixerModel(nn.Module):
             for i, layer in enumerate(self.layers)
         }
 
-    def forward(self, hidden_states, mask=None,inference_params=None):
+    def forward(self, hidden_states, mask=None, inference_params=None):
         # hidden_states = self.embedding(input_ids)
         # TODO: check if the residual is added
         residual = None
         for layer in self.layers:
             hidden_states, residual = layer(
-                hidden_states, residual,mask=mask, inference_params=inference_params
-            ) if mask is not None else  layer(
+                hidden_states, residual, mask=mask, inference_params=inference_params
+            ) if mask is not None else layer(
                 hidden_states, residual, inference_params=inference_params
             )
         if not self.fused_add_norm:
@@ -193,15 +198,15 @@ class MixerModel(nn.Module):
 
 class MambaLMHeadModel(nn.Module, GenerationMixin):
     def __init__(
-        self,
-        d_model: int,
-        n_layer: int,
-        vocab_size: int,
-        initializer_cfg=None,
-        pad_vocab_size_multiple: int = 1,
-        device=None,
-        dtype=None,
-        **backbone_kwargs,
+            self,
+            d_model: int,
+            n_layer: int,
+            vocab_size: int,
+            initializer_cfg=None,
+            pad_vocab_size_multiple: int = 1,
+            device=None,
+            dtype=None,
+            **backbone_kwargs,
     ) -> None:
         factory_kwargs = {"device": device, "dtype": dtype}
         super().__init__()
@@ -214,9 +219,9 @@ class MambaLMHeadModel(nn.Module, GenerationMixin):
             **backbone_kwargs,
             **factory_kwargs,
         )
-        #self.lm_head = nn.Linear(d_model, vocab_size, bias=False, **factory_kwargs)
+        # self.lm_head = nn.Linear(d_model, vocab_size, bias=False, **factory_kwargs)
 
-        #self.tie_weights()
+        # self.tie_weights()
 
     def tie_weights(self):
         self.lm_head.weight = self.backbone.embedding.weight
@@ -224,7 +229,7 @@ class MambaLMHeadModel(nn.Module, GenerationMixin):
     def allocate_inference_cache(self, batch_size, max_seqlen, dtype=None, **kwargs):
         return self.backbone.allocate_inference_cache(batch_size, max_seqlen, dtype=dtype, **kwargs)
 
-    def forward(self, hidden_states,mask=None,position_ids=None, inference_params=None, num_last_tokens=0):
+    def forward(self, hidden_states, mask=None, position_ids=None, inference_params=None, num_last_tokens=0):
         """
         "position_ids" is just to be compatible with Transformer generation. We don't use it.
         num_last_tokens: if > 0, only return the logits for the last n tokens
@@ -254,7 +259,6 @@ class MambaLMHeadModel(nn.Module, GenerationMixin):
                 residual_in_fp32=self.residual_in_fp32,
             )
 
-
         # #lm_logits = self.lm_head(hidden_states)
         # CausalLMOutput = namedtuple("CausalLMOutput", ["logits"])
         # # return CausalLMOutput(logits=lm_logits)
@@ -270,22 +274,22 @@ class MambaLMHeadModel(nn.Module, GenerationMixin):
 
 class MambaEncoderLayer(nn.Module):
     def __init__(
-        self,
-        d_model,
-        nlayers: int,
-        ssm_cfg=None,
-        norm_epsilon: float = 1e-5,
-        rms_norm: bool = False,
-        fused_add_norm=False,
-        residual_in_fp32=False,
-        initializer_cfg=None,
-        device=None,
-        dtype=None,
-        norm_scheme="post",  # "pre" or "post"
-        if_bimamba=False,
-        bimamba_type="none",
-        if_devide_out=False,
-        init_layer_scale=None,
+            self,
+            d_model,
+            nlayers: int,
+            ssm_cfg=None,
+            norm_epsilon: float = 1e-5,
+            rms_norm: bool = False,
+            fused_add_norm=False,
+            residual_in_fp32=False,
+            initializer_cfg=None,
+            device=None,
+            dtype=None,
+            norm_scheme="post",  # "pre" or "post"
+            if_bimamba=False,
+            bimamba_type="none",
+            if_devide_out=False,
+            init_layer_scale=None,
     ) -> None:
         factory_kwargs = {"device": device, "dtype": dtype}
         super().__init__()
@@ -331,6 +335,7 @@ class MambaEncoderLayer(nn.Module):
                 **(initializer_cfg if initializer_cfg is not None else {}),
             )
         )
+
     def forward(
             self,
             src: Tensor,
@@ -347,7 +352,7 @@ class MambaEncoderLayer(nn.Module):
                     src_mask: the mask for the src sequence (optional).
                     src_key_padding_mask: the mask for the src keys per batch (optional).
                 """
-        #TODO:这个部分的代码集成到mamba-model里面去，作为mask检测的一部分
+        # TODO:这个部分的代码集成到mamba-model里面去，作为mask检测的一部分
         if src_mask is not None:
             raise ValueError("MambaEncoderLayer does not support src_mask")
         # if not src_key_padding_mask.any().item():# return False if there isn't any True element, else return True
@@ -362,31 +367,34 @@ class MambaEncoderLayer(nn.Module):
         # src=self.mamba(src,mask=src_key_padding_mask_)
         # src = self.mamba(src)
         # return src.logits
-        hidden_states=src
+        hidden_states = src
         residual = None
         if num_last_tokens > 0:
             hidden_states = hidden_states[:, -num_last_tokens:]
         if self.bidirectional:
             for i in range(len(self.layers) // 2):
                 # forward
-                hidden_states_f, residual_f = self.layers[i*2](
+                hidden_states_f, residual_f = self.layers[i * 2](
                     hidden_states, residual, mask=src_mask, inference_params=inference_params
-                ) if src_mask is not None else self.layers[i*2](
+                ) if src_mask is not None else self.layers[i * 2](
                     hidden_states, residual, inference_params=inference_params
                 )
 
                 # backward
                 ### fliping
-                hidden_states_flip, residual_flip=self.flip_with_padding(hidden_states,residual,src_key_padding_mask_)
-                hidden_states_b, residual_b = self.layers[i * 2+1](
-                    hidden_states_flip, None if residual_flip == None else residual_flip, mask=src_mask, inference_params=inference_params
-                ) if src_mask is not None else self.layers[i * 2+1](
-                    hidden_states_flip, None if residual_flip == None else residual_flip, inference_params=inference_params
-                )#TODO: check the flip in our case
-                hidden_states_b,residual_b=self.flip_with_padding(hidden_states_b,residual_b,src_key_padding_mask_)
+                hidden_states_flip, residual_flip = self.flip_with_padding(hidden_states, residual,
+                                                                           src_key_padding_mask_)
+                hidden_states_b, residual_b = self.layers[i * 2 + 1](
+                    hidden_states_flip, None if residual_flip == None else residual_flip, mask=src_mask,
+                    inference_params=inference_params
+                ) if src_mask is not None else self.layers[i * 2 + 1](
+                    hidden_states_flip, None if residual_flip == None else residual_flip,
+                    inference_params=inference_params
+                )  # TODO: check the flip in our case
+                hidden_states_b, residual_b = self.flip_with_padding(hidden_states_b, residual_b, src_key_padding_mask_)
                 ### fliping
-                hidden_states=hidden_states_f+hidden_states_b
-                residual=residual_f+residual_b
+                hidden_states = hidden_states_f + hidden_states_b
+                residual = residual_f + residual_b
         else:
             for layer in self.layers:
                 hidden_states, residual = layer(
@@ -394,7 +402,8 @@ class MambaEncoderLayer(nn.Module):
                 ) if src_mask is not None else layer(
                     hidden_states, residual, inference_params=inference_params
                 )
-
+                # assert torch.isnan(hidden_states).sum() == 0, print('hidden_states: ', hidden_states)
+                # assert torch.isnan(residual).sum() == 0, print('residual: ', residual)
 
         if not self.fused_add_norm:
             residual = (hidden_states + residual) if residual is not None else hidden_states
@@ -415,7 +424,8 @@ class MambaEncoderLayer(nn.Module):
         # CausalLMOutput = namedtuple("CausalLMOutput", ["logits"])
         # # return CausalLMOutput(logits=lm_logits)
         return hidden_states
-    def flip_with_padding(self,hidden_states,residual,src_key_padding_mask_):
+
+    def flip_with_padding(self, hidden_states, residual, src_key_padding_mask_):
         seq_len_batch = src_key_padding_mask_.sum(dim=1)
         hidden_states_flip = []
         if residual is not None:
@@ -433,54 +443,61 @@ class MambaEncoderLayer(nn.Module):
                 hidden_states_flip.append(torch.cat([hs_f, hs[seq_len:]], dim=0).unsqueeze(0))  # [1,seq_len,emb]
             hidden_states_flip = torch.cat(hidden_states_flip, dim=0)
             residual_flip = None
-        return hidden_states_flip,residual_flip
-
-
+        return hidden_states_flip, residual_flip
 
 
 class MambaModel(nn.Module):
     def __init__(
-        self,
-        ntoken: int,
-        d_model: int,
-        nlayers: int,
-        nlayers_cls: int = 3,
-        device=None,
-        ssm_cfg=None,
-        norm_epsilon:float=1e-5,
-        rms_norm: bool=False,
-        fused_add_norm=False,
-        residual_in_fp32=False,
-        initializer_cfg=None,
-        n_cls: int = 1,
-        vocab: Any = None,
-        dropout: float = 0.5,
-        pad_token: str = "<pad>",
-        pad_value: int = 0,
-        do_mvc: bool = False,
-        do_dab: bool = False,
-        do_cce: bool = False,
-        use_batch_labels: bool = False,
-        num_batch_labels: Optional[int] = None,
-        domain_spec_batchnorm: Union[bool, str] = False,
-        input_emb_style: str = "continuous",
-        n_input_bins: Optional[int] = None,
-        cell_emb_style: str = "cls",
-        mvc_decoder_style: str = "inner product",
-        ecs_threshold: float = 0.3,
-        explicit_zero_prob: bool = False,
-        pre_norm: bool = False,
-        do_pretrain=False,
-        topo_graph: bool = False,
-        if_devide_out=False,
-        init_layer_scale=None,
-        if_bimamba=False,
-        bimamba_type="none",
-        do_pert=False,
-        pert_pad_id: int = 2,
-        token_emb_freeze=False
+            self,
+            ntoken: int,
+            d_model: int,
+            nlayers: int,
+            nlayers_cls: int = 3,
+            device=None,
+            ssm_cfg=None,
+            norm_epsilon: float = 1e-5,
+            rms_norm: bool = False,
+            fused_add_norm=False,
+            residual_in_fp32=False,
+            initializer_cfg=None,
+            n_cls: int = 1,
+            vocab: Any = None,
+            dropout: float = 0.5,
+            pad_token: str = "<pad>",
+            pad_value: int = 0,
+            do_mvc: bool = False,
+            do_dab: bool = False,
+            do_cce: bool = False,
+            use_batch_labels: bool = False,
+            num_batch_labels: Optional[int] = None,
+            domain_spec_batchnorm: Union[bool, str] = False,
+            input_emb_style: str = "continuous",
+            n_input_bins: Optional[int] = None,
+            cell_emb_style: str = "cls",
+            mvc_decoder_style: str = "inner product",
+            ecs_threshold: float = 0.3,
+            explicit_zero_prob: bool = False,
+            pre_norm: bool = False,
+            do_pretrain=False,
+            topo_graph: bool = False,
+            if_devide_out=False,
+            init_layer_scale=None,
+            if_bimamba=False,
+            bimamba_type="none",
+            do_pert=False,
+            pert_pad_id: int = 2,
+            token_emb_freeze=False,
+            only_value_emb=False,
+            bin_cls=False,
+            bin_nums=51,
+            use_transformer=False
     ):
         super().__init__()
+        frame = inspect.currentframe()
+        args, _, _, values = inspect.getargvalues(frame)
+        print(">>> Init parameters:")
+        for i in args[1:]:  # 跳过 self
+            print(f"{i} = {values[i]}")
         self.d_model = d_model
         self.do_dab = do_dab
         self.ecs_threshold = ecs_threshold
@@ -488,33 +505,50 @@ class MambaModel(nn.Module):
         self.domain_spec_batchnorm = domain_spec_batchnorm
         self.input_emb_style = input_emb_style
         self.pert_pad_id = pert_pad_id
-        self.do_pert=do_pert
+        self.do_pert = do_pert
         self.cell_emb_style = cell_emb_style
         self.explicit_zero_prob = explicit_zero_prob
-        self.do_pretrain=do_pretrain
-        self.token_emb_freeze=token_emb_freeze
+        self.do_pretrain = do_pretrain
+        self.token_emb_freeze = token_emb_freeze
+        self.only_value_emb = only_value_emb
+        self.bin_cls = bin_cls
+        self.bin_nums = bin_nums
         self.norm_scheme = "pre" if pre_norm else "post"
         if self.input_emb_style not in ["category", "continuous", "scaling"]:
             raise ValueError(
                 f"input_emb_style should be one of category, continuous, scaling, "
                 f"got {input_emb_style}"
             )
-        if cell_emb_style not in ["cls", "avg-pool", "w-pool","final",'attn']:
+        if cell_emb_style not in ["cls", "avg-pool", "w-pool", "final", 'attn']:
             raise ValueError(f"Unknown cell_emb_style: {cell_emb_style}")
 
         # TODO: add dropout in the GeneEncoder
-        if if_bimamba:
-            self.mamba_encoder = MambaEncoderLayer(d_model=d_model, nlayers=nlayers, device=device,
-                                                   fused_add_norm=fused_add_norm,norm_epsilon=norm_epsilon, rms_norm=rms_norm,
-                                                   ssm_cfg=ssm_cfg, initializer_cfg=initializer_cfg,
-                                                   residual_in_fp32=residual_in_fp32,bimamba_type=bimamba_type,
-                                                   if_bimamba=if_bimamba,if_devide_out=if_devide_out,
-                                                   init_layer_scale=init_layer_scale)
+        if use_transformer:
+            encoder_layers = FlashTransformerEncoderLayer(
+                d_model,
+                8,
+                d_model*2,
+                dropout,
+                batch_first=True,  # this is a default setting
+                norm_scheme='pre')
+            self.mamba_encoder = TransformerEncoder(encoder_layers, nlayers)
         else:
-            self.mamba_encoder=MambaEncoderLayer(d_model=d_model,nlayers=nlayers,device=device,fused_add_norm=fused_add_norm,
-                                                norm_epsilon=norm_epsilon,rms_norm=rms_norm,
-                                                ssm_cfg=ssm_cfg,initializer_cfg=initializer_cfg,residual_in_fp32=residual_in_fp32)
-        self.encoder = GeneEncoder(ntoken, d_model, padding_idx=vocab[pad_token],dropout=dropout) # embedding module is integrated in mamba encoder
+            if if_bimamba:
+                self.mamba_encoder = MambaEncoderLayer(d_model=d_model, nlayers=nlayers, device=device,
+                                                       fused_add_norm=fused_add_norm, norm_epsilon=norm_epsilon,
+                                                       rms_norm=rms_norm,
+                                                       ssm_cfg=ssm_cfg, initializer_cfg=initializer_cfg,
+                                                       residual_in_fp32=residual_in_fp32, bimamba_type=bimamba_type,
+                                                       if_bimamba=if_bimamba, if_devide_out=if_devide_out,
+                                                       init_layer_scale=init_layer_scale)
+            else:
+                self.mamba_encoder = MambaEncoderLayer(d_model=d_model, nlayers=nlayers, device=device,
+                                                       fused_add_norm=fused_add_norm,
+                                                       norm_epsilon=norm_epsilon, rms_norm=rms_norm,
+                                                       ssm_cfg=ssm_cfg, initializer_cfg=initializer_cfg,
+                                                       residual_in_fp32=residual_in_fp32)
+        self.encoder = GeneEncoder(ntoken, d_model, padding_idx=vocab[pad_token],
+                                   dropout=dropout)  # embedding module is integrated in mamba encoder
         if do_pert:
             self.pert_encoder = nn.Embedding(3, d_model, padding_idx=pert_pad_id)
         # Value Encoder, NOTE: the scaling style is also handled in _encode method
@@ -523,7 +557,7 @@ class MambaModel(nn.Module):
         elif input_emb_style == "category":
             assert n_input_bins > 0
             self.value_encoder = CategoryValueEncoder(
-                n_input_bins, d_model, padding_idx=pad_value,dropout=dropout
+                n_input_bins, d_model, padding_idx=pad_value, dropout=dropout
             )
         else:
             self.value_encoder = nn.Identity()  # nn.Softmax(dim=1)
@@ -544,7 +578,7 @@ class MambaModel(nn.Module):
             print("Using simple batchnorm instead of domain specific batchnorm")
             self.bn = nn.BatchNorm1d(d_model, eps=6.1e-5)
 
-        self.decoder = ExprDecoder(
+        self.decoder = BinExprDecoder(d_model, self.bin_nums) if self.bin_cls else ExprDecoder(
             d_model,
             explicit_zero_prob=explicit_zero_prob,
             use_batch_labels=use_batch_labels,
@@ -575,43 +609,48 @@ class MambaModel(nn.Module):
             self.cell_attn = nn.Linear(d_model, 1)
         self.init_weights()
 
-        self.topo_graph=topo_graph
+        self.topo_graph = topo_graph
         if self.do_pretrain and topo_graph:
             vocab_size = len(vocab)
             self.lm_head = nn.Linear(d_model, vocab_size, bias=False)
-            self.lm_head.weight = self.encoder.embedding.weight#tie weight
+            self.lm_head.weight = self.encoder.embedding.weight  # tie weight
+
     def init_weights(self) -> None:
         initrange = 0.1
         # TODO: initialize the embedding using pretrain scGPT
         self.encoder.embedding.weight.data.uniform_(-initrange, initrange)
 
     def _encode(
-        self,
-        src: Tensor,
-        values: Tensor,
-        src_key_padding_mask: Tensor,
-        batch_labels: Optional[Tensor] = None,# (batch,)
-        sorted_layer_idx=None,
-        input_pert_flags=None,
+            self,
+            src: Tensor,
+            values: Tensor,
+            src_key_padding_mask: Tensor,
+            batch_labels: Optional[Tensor] = None,  # (batch,)
+            sorted_layer_idx=None,
+            input_pert_flags=None,
     ) -> Tensor:
         self._check_batch_labels(batch_labels)
-        if self.topo_graph and self.token_emb_freeze:
-            with torch.no_grad():
-                src = self.encoder(src,sorted_layer_idx)  # (batch, seq_len, embsize)
-        else:
-            src = self.encoder(src,sorted_layer_idx)
-            if not self.topo_graph:
-                self.cur_gene_token_embs = src
         values = self.value_encoder(values)  # (batch, seq_len, embsize)
-
-        if self.input_emb_style == "scaling":
-            values = values.unsqueeze(2)
-            total_embs = src * values
+        if self.only_value_emb:
+            total_embs = values
         else:
-            total_embs = src + values
+            if self.topo_graph and self.token_emb_freeze:
+                with torch.no_grad():
+                    src = self.encoder(src, sorted_layer_idx)  # (batch, seq_len, embsize)
+            else:
+                src = self.encoder(src, sorted_layer_idx)
+                if not self.topo_graph:
+                    self.cur_gene_token_embs = src
+
+
+            if self.input_emb_style == "scaling":
+                values = values.unsqueeze(2)
+                total_embs = src * values
+            else:
+                total_embs = src + values
         if self.do_pert:
             perts = self.pert_encoder(input_pert_flags)
-            total_embs=total_embs+perts
+            total_embs = total_embs + perts
         if self.domain_spec_batchnorm:
             batch_label = int(batch_labels[0].item())
             total_embs = self.dsbn(total_embs.permute(0, 2, 1), batch_label).permute(
@@ -619,11 +658,15 @@ class MambaModel(nn.Module):
             )  # the batch norm always works on dim 1
         else:
             total_embs = self.bn(total_embs.permute(0, 2, 1)).permute(0, 2, 1)
-
+        # assert torch.isnan(total_embs).sum() == 0, print('total_embs: ', total_embs)
+        # assert torch.isnan(src_key_padding_mask).sum() == 0, print('src_key_padding_mask: ', src_key_padding_mask)
         output = self.mamba_encoder(total_embs, src_key_padding_mask=src_key_padding_mask)
+        # assert torch.isnan(output).sum() == 0, print('output: ', output)
+
         return output  # (batch, seq_len, embsize)
+
     def _get_cell_emb_from_layer(
-        self, layer_output: Tensor, weights: Tensor = None,src_key_padding_mask:Tensor = None
+            self, layer_output: Tensor, weights: Tensor = None, src_key_padding_mask: Tensor = None
     ) -> Tensor:
         """
         Args:
@@ -645,7 +688,7 @@ class MambaModel(nn.Module):
                 raise ValueError("weights should be 2D")
             cell_emb = torch.sum(layer_output * weights.unsqueeze(2), dim=1)
             cell_emb = F.normalize(cell_emb, p=2, dim=1)  # (batch, embsize)
-        elif self.cell_emb_style in ["final","avg-pool"]:
+        elif self.cell_emb_style in ["final", "avg-pool"]:
             if not src_key_padding_mask.any().item():  # return False if there isn't any True element, else return True
                 # no padding tokens in src
                 if self.cell_emb_style == 'final':
@@ -658,30 +701,32 @@ class MambaModel(nn.Module):
                     src_key_padding_mask = src_key_padding_mask.bool()
                 src_key_padding_mask_ = ~src_key_padding_mask
                 final_token = src_key_padding_mask_.sum(dim=1)
-                if self.cell_emb_style=='final':
-                    cell_emb = torch.cat([seq[gene_idx,:].unsqueeze(0) for seq, gene_idx in zip(layer_output, final_token-1)],dim=0)
-                elif self.cell_emb_style=='avg-pool':
-                    cell_emb=torch.cat([seq[:gene_idx, :].mean(dim=0).unsqueeze(0) for seq, gene_idx in
-                               zip(layer_output, final_token - 1)], dim=0)
-        elif self.cell_emb_style=='attn':
+                if self.cell_emb_style == 'final':
+                    cell_emb = torch.cat(
+                        [seq[gene_idx, :].unsqueeze(0) for seq, gene_idx in zip(layer_output, final_token - 1)], dim=0)
+                elif self.cell_emb_style == 'avg-pool':
+                    cell_emb = torch.cat([seq[:gene_idx, :].mean(dim=0).unsqueeze(0) for seq, gene_idx in
+                                          zip(layer_output, final_token - 1)], dim=0)
+        elif self.cell_emb_style == 'attn':
             # layer_output = self.cell_norm(layer_output)
             # cell_emb = self.cell_emb_attn(layer_output, key_padding_mask=src_key_padding_mask)
             # cell_emb = layer_output + self.dropout(cell_emb)
-            attn_scores=self.cell_attn(layer_output)
+            attn_scores = self.cell_attn(layer_output)
             attn_scores[src_key_padding_mask] = float('-inf')
             attn_weights = F.softmax(attn_scores, dim=1)
             cell_emb = torch.sum(attn_weights * layer_output, dim=1)
-            cell_emb= self.cell_norm(cell_emb)
-            cell_emb=self.dropout(cell_emb)
+            cell_emb = self.cell_norm(cell_emb)
+            cell_emb = self.dropout(cell_emb)
         return cell_emb
+
     def generate(
-        self,
-        cell_emb: Tensor,
-        src: Tensor,
-        values: Optional[Tensor] = None,
-        src_key_padding_mask: Optional[Tensor] = None,
-        gen_iters: int = 1,
-        batch_labels: Optional[Tensor] = None,  # (batch,)
+            self,
+            cell_emb: Tensor,
+            src: Tensor,
+            values: Optional[Tensor] = None,
+            src_key_padding_mask: Optional[Tensor] = None,
+            gen_iters: int = 1,
+            batch_labels: Optional[Tensor] = None,  # (batch,)
     ) -> Tensor:
         """
         Args:
@@ -762,20 +807,20 @@ class MambaModel(nn.Module):
             )
 
     def forward(
-        self,
-        src: Tensor,
-        values: Tensor,
-        src_key_padding_mask: Tensor,
-        batch_labels: Optional[Tensor] = None,
-        CLS: bool = False,
-        CCE: bool = False,
-        MVC: bool = False,
-        ECS: bool = False,
-        do_sample: bool = False,
-        input_sorted_gene=None,
-        topo_padding_mask=None,
-        sorted_layer_idx=None,
-        input_pert_flags=None,
+            self,
+            src: Tensor,
+            values: Tensor,
+            src_key_padding_mask: Tensor,
+            batch_labels: Optional[Tensor] = None,
+            CLS: bool = False,
+            CCE: bool = False,
+            MVC: bool = False,
+            ECS: bool = False,
+            do_sample: bool = False,
+            input_sorted_gene=None,
+            topo_padding_mask=None,
+            sorted_layer_idx=None,
+            input_pert_flags=None,
     ) -> Mapping[str, Tensor]:
         """
         Args:
@@ -797,8 +842,9 @@ class MambaModel(nn.Module):
             dict of output Tensors.
         """
         mamba_output = self._encode(
-            src, values, src_key_padding_mask, batch_labels,sorted_layer_idx,input_pert_flags=input_pert_flags
+            src, values, src_key_padding_mask, batch_labels, sorted_layer_idx, input_pert_flags=input_pert_flags
         )
+        # assert torch.isnan(mamba_output).sum() == 0, print('mamba_output: ', mamba_output)
         if self.use_batch_labels:
             batch_emb = self.batch_encoder(batch_labels)  # (batch, embsize)
 
@@ -814,16 +860,17 @@ class MambaModel(nn.Module):
                 dim=2,
             ),
             # else transformer_output + batch_emb.unsqueeze(1),
-        )
+        )  # value prediction
+
         if self.explicit_zero_prob and do_sample:
             bernoulli = Bernoulli(probs=mlm_output["zero_probs"])
             output["mlm_output"] = bernoulli.sample() * mlm_output["pred"]
         else:
-            output["mlm_output"] = mlm_output["pred"]  # (batch, seq_len)
+            output["mlm_output"] = mlm_output["pred"]  # (batch, seq_len) if not bin_cls else batch, seq_len, bin_nums
         if self.explicit_zero_prob:
             output["mlm_zero_probs"] = mlm_output["zero_probs"]
 
-        cell_emb = self._get_cell_emb_from_layer(mamba_output, values,src_key_padding_mask=src_key_padding_mask)
+        cell_emb = self._get_cell_emb_from_layer(mamba_output, values, src_key_padding_mask=src_key_padding_mask)
         output["cell_emb"] = cell_emb
 
         if CLS:
@@ -831,9 +878,9 @@ class MambaModel(nn.Module):
         if CCE:
             cell1 = cell_emb
             mamba_output2 = self._encode(
-                src, values, src_key_padding_mask, batch_labels,sorted_layer_idx
+                src, values, src_key_padding_mask, batch_labels, sorted_layer_idx
             )
-            cell2 = self._get_cell_emb_from_layer(mamba_output2,src_key_padding_mask=src_key_padding_mask)
+            cell2 = self._get_cell_emb_from_layer(mamba_output2, src_key_padding_mask=src_key_padding_mask)
 
             # Gather embeddings from all devices if distributed training
             if dist.is_initialized() and self.training:
@@ -859,10 +906,12 @@ class MambaModel(nn.Module):
             labels = torch.arange(cos_sim.size(0)).long().to(cell1.device)
             output["loss_cce"] = self.creterion_cce(cos_sim, labels)
         if self.do_pretrain and self.topo_graph:
-            output["lm_logit"]=self.topo_forward(input_sorted_gene=input_sorted_gene,topo_padding_mask=topo_padding_mask,sorted_layer_idx=sorted_layer_idx)
+            output["lm_logit"] = self.topo_forward(input_sorted_gene=input_sorted_gene,
+                                                   topo_padding_mask=topo_padding_mask,
+                                                   sorted_layer_idx=sorted_layer_idx)
         if MVC:
             if self.topo_graph:
-                self.cur_gene_token_embs=self.encoder(src,sorted_layer_idx)
+                self.cur_gene_token_embs = self.encoder(src, sorted_layer_idx)
             mvc_output = self.mvc_decoder(
                 cell_emb
                 if not self.use_batch_labels
@@ -896,7 +945,7 @@ class MambaModel(nn.Module):
             output["dab_output"] = self.grad_reverse_discriminator(cell_emb)
         return output
 
-    def topo_forward(self,input_sorted_gene,topo_padding_mask,sorted_layer_idx=None):
+    def topo_forward(self, input_sorted_gene, topo_padding_mask, sorted_layer_idx=None):
         '''
         Used for topological prediction.
         Args:
@@ -905,22 +954,22 @@ class MambaModel(nn.Module):
             sorted_layer_idx: topo layer idx of input_sorted_gene
         Returns:
         '''
-        emb=self.encoder(input_sorted_gene,sorted_layer_idx)#[bsz,seq_len,emb_size], with mask
-        h=self.mamba_encoder(emb, src_key_padding_mask=topo_padding_mask)
-        lm_logit=self.lm_head(h)
+        emb = self.encoder(input_sorted_gene, sorted_layer_idx)  # [bsz,seq_len,emb_size], with mask
+        h = self.mamba_encoder(emb, src_key_padding_mask=topo_padding_mask)
+        lm_logit = self.lm_head(h)
         return lm_logit
 
     def encode_batch(
-        self,
-        src: Tensor,
-        values: Tensor,
-        src_key_padding_mask: Tensor,
-        batch_size: int,
-        batch_labels: Optional[Tensor] = None,
-        output_to_cpu: bool = True,
-        return_np: bool = False,
-        time_step: Optional[int] = None,
-        sorted_layer_idx=None
+            self,
+            src: Tensor,
+            values: Tensor,
+            src_key_padding_mask: Tensor,
+            batch_size: int,
+            batch_labels: Optional[Tensor] = None,
+            output_to_cpu: bool = True,
+            return_np: bool = False,
+            time_step: Optional[int] = None,
+            sorted_layer_idx=None
     ) -> Tensor:
         """
         get cell embedding
@@ -949,37 +998,42 @@ class MambaModel(nn.Module):
 
         for i in trange(0, N, batch_size):
             raw_output = self._encode(
-                src[i : i + batch_size].to(device),
-                values[i : i + batch_size].to(device),
-                src_key_padding_mask[i : i + batch_size].to(device),
-                batch_labels[i : i + batch_size].to(device)
+                src[i: i + batch_size].to(device),
+                values[i: i + batch_size].to(device),
+                src_key_padding_mask[i: i + batch_size].to(device),
+                batch_labels[i: i + batch_size].to(device)
                 if batch_labels is not None
                 else None,
-                sorted_layer_idx=sorted_layer_idx[i : i + batch_size].to(device) if sorted_layer_idx is not None else None
+                sorted_layer_idx=sorted_layer_idx[i: i + batch_size].to(
+                    device) if sorted_layer_idx is not None else None
             )
-            cell_emb = self._get_cell_emb_from_layer(raw_output, src_key_padding_mask=src_key_padding_mask[i : i + batch_size].to(device))
+            cell_emb = self._get_cell_emb_from_layer(raw_output,
+                                                     src_key_padding_mask=src_key_padding_mask[i: i + batch_size].to(
+                                                         device))
 
             cell_emb = cell_emb.detach()
             if output_to_cpu:
                 cell_emb = cell_emb.cpu()
             if return_np:
                 cell_emb = cell_emb.numpy()
-            outputs[i : i + batch_size] = cell_emb
+            outputs[i: i + batch_size] = cell_emb
         return outputs
-    def get_single_cell_emb(self,src,value,src_key_padding_mask):
+
+    def get_single_cell_emb(self, src, value, src_key_padding_mask):
         # src,value=src.unsqueeze(0),value.unsqueeze(0)
         # src_key_padding_mask=src_key_padding_mask.unsqueeze(0)
-        raw_output=self._encode(src=src,
-                                values=value,
-                                src_key_padding_mask=src_key_padding_mask)
-        cell_emb=self._get_cell_emb_from_layer(raw_output).detach().cpu()
+        raw_output = self._encode(src=src,
+                                  values=value,
+                                  src_key_padding_mask=src_key_padding_mask)
+        cell_emb = self._get_cell_emb_from_layer(raw_output).detach().cpu()
         return cell_emb
+
     def pred_perturb(
-        self,
-        batch_data,
-        include_zero_gene="batch-wise",
-        gene_ids=None,
-        amp=True,
+            self,
+            batch_data,
+            include_zero_gene="batch-wise",
+            gene_ids=None,
+            amp=True,
     ) -> Tensor:
         """
         Args:
@@ -1029,7 +1083,8 @@ class MambaModel(nn.Module):
             pred_gene_values = torch.zeros_like(ori_gene_values)
             pred_gene_values[:, input_gene_ids] = output_values
         return pred_gene_values
-    def get_gene_repr(self,dataloader,vocab,device,pad_token='<pad>',do_train=False):
+
+    def get_gene_repr(self, dataloader, vocab, device, pad_token='<pad>', do_train=False):
         '''
         obtain the output gene-representation of model
         Args:
@@ -1039,8 +1094,8 @@ class MambaModel(nn.Module):
             pad_token:
         Returns:
         '''
-        norm=nn.LayerNorm(self.d_model).to(device)
-        gene_emb_total=torch.zeros((vocab.__len__(),self.d_model)).to(device)
+        norm = nn.LayerNorm(self.d_model).to(device)
+        gene_emb_total = torch.zeros((vocab.__len__(), self.d_model)).to(device)
         for batch, batch_data in enumerate(dataloader):
             input_gene_ids = batch_data["gene_ids"].to(device)
             input_values = batch_data["values"].to(device)
@@ -1050,13 +1105,15 @@ class MambaModel(nn.Module):
                                              src_key_padding_mask=src_key_padding_mask)
             else:
                 with torch.no_grad():
-                    cur_batch_emb=self._encode(src=input_gene_ids,values=input_values,src_key_padding_mask=src_key_padding_mask).detach()#[b,s,d]
-            for gene_tokens,genes_emb in zip(input_gene_ids,cur_batch_emb):#[seq_len,d]
-                gene_emb_total[gene_tokens]+=genes_emb
-        for i in trange(0, gene_emb_total.size(0),dataloader.batch_size):
-            gene_emb_total[i:i+dataloader.batch_size]=norm( gene_emb_total[i:i+dataloader.batch_size])
-        return  gene_emb_total.cpu() if not do_train else gene_emb_total
-    def get_gene_emb(self,src,do_train=False):
+                    cur_batch_emb = self._encode(src=input_gene_ids, values=input_values,
+                                                 src_key_padding_mask=src_key_padding_mask).detach()  # [b,s,d]
+            for gene_tokens, genes_emb in zip(input_gene_ids, cur_batch_emb):  # [seq_len,d]
+                gene_emb_total[gene_tokens] += genes_emb
+        for i in trange(0, gene_emb_total.size(0), dataloader.batch_size):
+            gene_emb_total[i:i + dataloader.batch_size] = norm(gene_emb_total[i:i + dataloader.batch_size])
+        return gene_emb_total.cpu() if not do_train else gene_emb_total
+
+    def get_gene_emb(self, src, do_train=False):
         '''
         obtain the input gene-embedding of model
         Args:
@@ -1066,8 +1123,6 @@ class MambaModel(nn.Module):
 
         '''
         return self.encoder(src) if do_train else self.encoder(src).detach().cpu()
-
-
 
 
 class TopoLayerEncoding(torch.nn.Module):
@@ -1080,6 +1135,7 @@ class TopoLayerEncoding(torch.nn.Module):
         pe[:, 1::2] = torch.cos(position * div_term)
         pe = pe.unsqueeze(0).transpose(0, 1)
         self.register_buffer('pe', pe)
+
     def forward(self, x, layer_index):
         x = x + self.pe[layer_index].view(x.size())
         return x
@@ -1087,29 +1143,31 @@ class TopoLayerEncoding(torch.nn.Module):
 
 class GeneEncoder(nn.Module):
     def __init__(
-        self,
-        num_embeddings: int,
-        embedding_dim: int,
-        padding_idx: Optional[int] = None,
-        dropout: Optional[float]=0.2
+            self,
+            num_embeddings: int,
+            embedding_dim: int,
+            padding_idx: Optional[int] = None,
+            dropout: Optional[float] = 0.2
     ):
         super().__init__()
         self.embedding = nn.Embedding(
             num_embeddings, embedding_dim, padding_idx=padding_idx
         )
         self.enc_norm = nn.LayerNorm(embedding_dim)
-        self.dropout=nn.Dropout(dropout)
-        self.layer_emb=TopoLayerEncoding(embedding_dim)
-    def forward(self, x: Tensor,sorted_layer_idx=None) -> Tensor:
+        self.dropout = nn.Dropout(dropout)
+        self.layer_emb = TopoLayerEncoding(embedding_dim)
+
+    def forward(self, x: Tensor, sorted_layer_idx=None) -> Tensor:
         x = self.embedding(x)  # (batch, seq_len, embsize)
         if sorted_layer_idx is not None:
             x = self.layer_emb(x, sorted_layer_idx)
         x = self.enc_norm(x)
         return self.dropout(x)
 
+
 def map_raw_id_to_vocab_id(
-    raw_ids: Union[np.ndarray, torch.Tensor],
-    gene_ids: np.ndarray,
+        raw_ids: Union[np.ndarray, torch.Tensor],
+        gene_ids: np.ndarray,
 ) -> Union[np.ndarray, torch.Tensor]:
     """
     Map some raw ids which are indices of the raw gene names to the indices of the

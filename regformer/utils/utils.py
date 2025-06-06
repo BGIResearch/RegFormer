@@ -17,6 +17,18 @@ import wandb
 from regformer.data.gene_tokenizer import GeneVocab
 import toml
 import json
+from sklearn.model_selection import train_test_split
+
+
+def train_test_split_adata(adata, test_size=0.2):
+    cell_indices = adata.obs.index
+    cell_indices = cell_indices[~cell_indices.duplicated(keep='first')]
+    train_indices, test_indices = train_test_split(cell_indices, test_size=test_size, random_state=42)
+    train_data = adata[train_indices, :].copy()
+    test_data = adata[test_indices, :].copy()
+    return train_data, test_data
+
+
 def get_reduced(tensor, current_device, dest_device, world_size):
     """
     将不同GPU上的变量或tensor集中在主GPU上，并得到均值
@@ -128,15 +140,23 @@ def load_config(config_file):
 
 
 def model_config(args,is_master=True):
-    if args.load_model != "none":
+    if args.load_model:
         model_dir = Path(args.load_model)
         model_config_file = model_dir / "args.json"
         model_file = model_dir / "best_model.pt"
         vocab_file = model_dir / "vocab.json"
 
         # model
-        with open(model_config_file, "r") as f:
-            model_configs = json.load(f)
+        if os.path.exists(model_config_file):
+            with open(model_config_file, "r") as f:
+                model_configs = json.load(f)
+        else:
+            model_configs = {}
+            model_configs["embsize"] = args.layer_size  # embedding dimension
+            model_configs["d_hid"] = args.layer_size  # dimension of the feedforward network in TransformerEncoder
+            model_configs["nlayers"] = args.nlayers  # number of TransformerEncoderLayer in TransformerEncoder
+            model_configs["nheads"] = args.nhead  # number of heads in nn.MultiheadAttention
+            # dropout = args.dropout  # dropout probability
         if is_master:
             logger.info(
                 f"Resume model from {model_file}, the model args will override the "
@@ -156,6 +176,7 @@ def model_config(args,is_master=True):
         #dropout = args.dropout  # dropout probability
         model_configs["n_layers_cls"] = 3
         vocab_file = args.vocab_file
+        model_file = None
     # vocab = GeneVocab.from_file(vocab_file)
     return model_configs,vocab_file,model_file
 
@@ -178,9 +199,9 @@ def load_ckpt(model,model_file,args,logger=None):
             logger.warning(f'{"!" * 30}Embeddings Unavailable{"!" * 30}\n'
                            f'Expected shape: {model_dict["encoder.embedding.weight"].size()}\n'
                            f'But got shape: {ckpt_emb_shape} from ckpt {model_file}')
-        if logger is not None:
-            for k, v in pretrained_dict.items():
-                logger.info(f"Loading params {k} with shape {v.shape}")
+        # if logger is not None:
+        #     for k, v in pretrained_dict.items():
+        #         logger.info(f"Loading params {k} with shape {v.shape}")
         model_dict.update(pretrained_dict)
         model.load_state_dict(model_dict)
     pre_freeze_param_count = sum(
@@ -196,12 +217,6 @@ def load_ckpt(model,model_file,args,logger=None):
     if logger is not None:
         logger.info(f"Total Pre freeze Params {(pre_freeze_param_count)}")
         logger.info(f"Total Post freeze Params {(post_freeze_param_count)}")
-    wandb.log(
-        {
-            "info/pre_freeze_param_count": pre_freeze_param_count,
-            "info/post_freeze_param_count": post_freeze_param_count,
-        },
-    )
     return model
 
 def define_wandb_metrcis():
@@ -210,3 +225,29 @@ def define_wandb_metrcis():
     wandb.define_metric("valid/dab", summary="min", step_metric="epoch")
     wandb.define_metric("valid/sum_mse_dab", summary="min", step_metric="epoch")
     wandb.define_metric("test/avg_bio", summary="max")
+
+
+def print_model_size(model):
+    total_params = 0
+    trainable_params = 0
+    non_trainable_params = 0
+    trainable_dict = {}
+    non_trainable_dict = {}
+    for name, param in model.named_parameters():
+        tem = np.prod(param.size())
+        total_params += tem
+        if param.requires_grad:
+            trainable_params += tem
+            trainable_dict[name] = tem
+        else:
+            non_trainable_params += tem
+            non_trainable_dict[name] = tem
+    print(f'Total params: {total_params / 1e6}M')
+    print(f'Trainable params: {trainable_params / 1e6}M')
+    print(f'Non-trainable params: {non_trainable_params / 1e6}M')
+    # print(f"*******Trainable info********")
+    # for name in trainable_dict:
+    #     print(f"Parameter name: {name}, Size: {trainable_dict[name]}")
+    # print(f"*******Non-Trainable info********")
+    for name in non_trainable_dict:
+        print(f"Parameter name: {name}, Size: {non_trainable_dict[name]}")

@@ -257,7 +257,8 @@ def tokenize_batch(
     append_cls: bool = True,
     include_zero_gene: bool = False,
     cls_id: int = "<cls>",
-    graph=None
+    graph=None,
+    random_sort=False
 ) -> List[Tuple[Union[torch.Tensor, np.ndarray]]]:
     """
     Tokenize a batch of data. Returns a list of tuple (gene_id, count).
@@ -293,15 +294,22 @@ def tokenize_batch(
         genes = torch.from_numpy(genes).long()
         values = torch.from_numpy(values)
         if graph is not None:
-            grn = dgl.node_subgraph(graph, genes)
-            topo_sorting=dgl.topological_nodes_generator(grn)
-            sorted_index = torch.cat(topo_sorting)
-            sort_layer_idx = []
-            for idx, layer in enumerate(topo_sorting):
-                sort_layer_idx += [idx + 1] * len(layer)
-            sort_layer_idx=torch.tensor(sort_layer_idx,dtype=torch.int64)
-            genes=grn.ndata['_ID'][sorted_index]
-            values=values[sorted_index]
+            if random_sort:
+                genes, sort_layer_idx, values = random_sorting(genes, values)
+                if return_pt:
+                    genes = torch.from_numpy(genes).long()
+                    sort_layer_idx = torch.from_numpy(sort_layer_idx).long()
+                    values = torch.from_numpy(values)
+            else:
+                grn = dgl.node_subgraph(graph, genes)
+                topo_sorting=dgl.topological_nodes_generator(grn)
+                sorted_index = torch.cat(topo_sorting)
+                sort_layer_idx = []
+                for idx, layer in enumerate(topo_sorting):
+                    sort_layer_idx += [idx + 1] * len(layer)
+                sort_layer_idx=torch.tensor(sort_layer_idx,dtype=torch.int64)
+                genes=grn.ndata['_ID'][sorted_index]
+                values=values[sorted_index]
         else:
             sort_layer_idx=torch.zeros_like(torch.from_numpy(gene_ids)) if return_pt else np.zeros_like(gene_ids)
 
@@ -314,6 +322,20 @@ def tokenize_batch(
         tokenized_data.append((genes, values,sort_layer_idx))
 
     return tokenized_data
+
+
+def random_sorting(gene_ids, values):
+    gene_ids = np.array(gene_ids)
+    permuted_idx = np.random.permutation(len(gene_ids))
+    sorting_gene_ids = gene_ids[permuted_idx]
+
+    if values is not None:
+        sorting_values = np.array(values)[permuted_idx]
+    else:
+        sorting_values = None
+    max_layer = 10
+    sort_layer_idx = np.random.randint(1, max_layer + 1, size=len(sorting_gene_ids))
+    return sorting_gene_ids, sort_layer_idx, sorting_values
 
 
 def pad_batch(
@@ -404,7 +426,8 @@ def tokenize_and_pad_batch(
     include_zero_gene: bool = False,
     cls_token: str = "<cls>",
     return_pt: bool = True,
-    graph=None
+    graph=None,
+    random_sort=False,
 ) -> Dict[str, torch.Tensor]:
     """
     Tokenize and pad a batch of data. Returns a list of tuple (gene_id, count).
@@ -417,7 +440,8 @@ def tokenize_and_pad_batch(
         append_cls=append_cls,
         include_zero_gene=include_zero_gene,
         cls_id=cls_id,
-        graph=graph
+        graph=graph,
+        random_sort=random_sort
     )
     if include_zero_gene:
         max_len=gene_ids.__len__()+1 if append_cls else gene_ids.__len__()

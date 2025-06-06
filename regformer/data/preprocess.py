@@ -120,6 +120,17 @@ class Preprocessor:
                 else None,
             )
 
+        if adata.X.min() >= 0:
+            self.normalize_total = False
+            self.log1p = False
+            if adata.X.max() > 30:
+                self.log1p = True
+                if adata.X.max() - np.int32(adata.X.max()) == np.int32(0):
+                    self.normalize_total = 1e4
+        else:
+            raise Exception('the express matrix have been scale, exit!')
+
+
         # step 3: normalize total
         if self.normalize_total:
             if self.verbose:

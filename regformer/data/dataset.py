@@ -25,6 +25,7 @@ import copy
 from regformer.data.preprocess import Preprocessor
 from regformer.data.gene_tokenizer import tokenize_and_pad_batch
 
+
 def Load_Data(data_path, args, **kwargs):
     if args.task == 'Cell_annotation':
         return cell_annotation_dataset(data_path=data_path, args=args, **kwargs)
@@ -34,6 +35,7 @@ def Load_Data(data_path, args, **kwargs):
         return Pretraining_dataset(data_path=data_path, args=args, **kwargs)
     elif args.task == 'GRN_inference':
         raise NotImplementedError
+
 
 def cell_annotation_dataset(data_path, args, **kwargs):
     '''
@@ -54,12 +56,12 @@ def cell_annotation_dataset(data_path, args, **kwargs):
     if args.gene_column != 'none':
         adata.var = adata.var.set_index(args.gene_column)
     adata.var["gene_name"] = adata.var.index.tolist()
-    if args.umap_column !='none' and 'X_umap' not in adata.obsm:
-        if args.umap_column=='TSNE':
+    if args.umap_column != 'none' and 'X_umap' not in adata.obsm:
+        if args.umap_column == 'TSNE':
             adata.obsm["X_umap"] = np.array(adata.obs.loc[:, ["TSNE.1", "TSNE.2"]])
         else:
             adata.obsm["X_umap"] = adata.obsm[args.umap_column]
-    if args.pca_column !='none'  and 'X_pca' not in adata.obsm:
+    if args.pca_column != 'none' and 'X_pca' not in adata.obsm:
         adata.obsm["X_pca"] = adata.obsm[args.pca_column]
 
     celltype_id_labels = adata.obs["celltype"].astype("category").cat.codes.values
@@ -115,6 +117,68 @@ def cell_annotation_dataset(data_path, args, **kwargs):
     return train_data_pt, valid_data_pt, test_data_pt, num_batch_types, celltypes, id2type, num_types, adata_test_raw
 
 
+def infer_dataset(data_path, args, **kwargs):
+    '''
+    Args:
+        data_path:
+        args:
+        **kwargs:
+    Returns:
+    '''
+    data_is_raw = args.data_is_raw
+    filter_gene_by_counts = args.filter_gene_by_counts
+    if data_path.endswith('h5ad'):
+        adata = sc.read(data_path)
+    else:
+        data_dir = Path(os.path.join(args.data_path, args.task, args.data_name))
+        adata = sc.read(data_dir / f"{args.data_name}.h5ad")
+    adata.obs["celltype"] = adata.obs[args.cell_type_column].astype("category")
+    if args.gene_column != 'none':
+        adata.var = adata.var.set_index(args.gene_column)
+    adata.var["gene_name"] = adata.var.index.tolist()
+    celltype_id_labels = adata.obs["celltype"].astype("category").cat.codes.values
+    celltypes = adata.obs["celltype"].unique()
+    num_types = len(np.unique(celltype_id_labels))
+    id2type = dict(enumerate(adata.obs["celltype"].astype("category").cat.categories))
+    adata.obs["celltype_id"] = celltype_id_labels
+    adata.obs["batch_id"] = 0
+    logger = kwargs['logger']
+    vocab = kwargs['vocab']
+    is_master = kwargs['is_master']
+    mask_value = kwargs['mask_value']
+    pad_value = kwargs['pad_value']
+    pad_token = kwargs['pad_token']
+
+    ## only retain the gene that appears in vocab
+    adata, _ = filter_gene(vocab=vocab, adata=adata, is_master=is_master,
+                           logger=logger)  # only retain the gene that appears in vocab
+    # set up the preprocessor, use the args to analysis_tools the workflow
+    preprocessor = Preprocessor(
+        use_key="X",  # the key in adata.layers to use as raw data
+        filter_gene_by_counts=filter_gene_by_counts,  # step 1
+        filter_cell_by_counts=False,  # step 2
+        normalize_total=1e4,  # 3. whether to normalize the raw data and to what sum
+        result_normed_key="X_normed",  # the key in adata.layers to store the normalized data
+        log1p=data_is_raw,  # 4. whether to log1p the normalized data
+        result_log1p_key="X_log1p",
+        subset_hvg=False,  # 5. whether to subset the raw data to highly variable genes
+        hvg_flavor="seurat_v3" if data_is_raw else "cell_ranger",
+        binning=args.n_bins,  # 6. whether to bin the raw data and to what number of bins
+        result_binned_key="X_binned",  # the key in adata.layers to store the binned data
+    )
+    preprocessor(adata, batch_key=None)
+
+    train_data_pt = prepare_cell_data_for_infer(adata=adata,
+                                      args=args,
+                                      vocab=vocab, is_master=is_master,
+                                      mask_value=mask_value,
+                                      pad_value=pad_value, logger=logger,
+                                      sort_seq_batch=False,
+                                      pad_token=pad_token)
+
+    return train_data_pt
+
+
 def Integration_dataset(data_path, args, **kwargs):
     if data_path.endswith('h5ad'):
         adata = sc.read(data_path)
@@ -133,7 +197,7 @@ def Integration_dataset(data_path, args, **kwargs):
     adata.obs["str_batch"] = adata.obs[args.batch_column].astype(str)
     batch_id_labels = adata.obs["str_batch"].astype("category").cat.codes.values
     adata.obs["batch_id"] = batch_id_labels
-    if args.gene_column!='none':
+    if args.gene_column != 'none':
         adata.var = adata.var.set_index(args.gene_column)
     adata.var["gene_name"] = adata.var.index.tolist()
     # sc.pp.pca(adata)
@@ -192,12 +256,12 @@ def Pretraining_dataset(data_path, args, **kwargs):
             valid_data = LMDBDataset(db_path=valid_path, bin_num=args.n_bins, args=args, **kwargs)
             return train_data, valid_data
     elif args.data_name == 'cellxgene':
-        train_path = osp.join(args.lmdb_path, 'all.db.2024.03.06')
+        train_path = args.lmdb_path
         train_data = LMDBDataset(db_path=train_path, bin_num=args.n_bins, args=args, **kwargs)
 
-        valid_path = r'/home/share/huadjyin/home/s_jiangwenjian/proj/scLLM/scGPT/data/Pretraining/panglao/binned/val.db'  # TODO:replace this if new val_set is available
+        valid_path = args.val_lmdb_path  # TODO:replace this if new val_set is available
         valid_args = copy.deepcopy(args)
-        valid_args.data_name = 'panglao'  # TODO:replace this if new val_set is available
+        valid_args.data_name = 'cellxgene'  # TODO:replace this if new val_set is available
         valid_data = LMDBDataset(db_path=valid_path, bin_num=args.n_bins, args=valid_args, **kwargs)
         return train_data, valid_data
     else:
@@ -242,8 +306,9 @@ class LMDBDataset(Dataset):
                 self.valid_idx = self.gene_idx_array < self.grn.num_nodes()  # TODO:delete this if new dataset is valid
                 self.gene_idx_array = self.gene_idx_array[self.valid_idx]  # TODO:delete this if new dataset is valid
 
-        with self.env.begin(write=False) as txn:
-            self.length = txn.get(b'__len__')
+        # with self.env.begin(write=False) as txn:
+        #     self.length = 1000
+        #     # self.length = txn.get(b'__len__')
 
     def __getitem__(self, index):
         values = self.txn.get(u'{}'.format(index).encode())
@@ -270,10 +335,10 @@ class LMDBDataset(Dataset):
             values[:int(self.max_seq_len * 0.1)] = values_nz
             np.random.shuffle(values)
         assert len(values) == len(gene_ids)
-        if self.n_bins>0:
+        if self.n_bins > 0:
             input_values, bin_edge = self._binning(values)
         else:
-            input_values=values
+            input_values = values
         values, gene_ids, masked_values, sorted_gene_ids, masked_sorted_gene_ids, sorted_layer_idx = self._pad_and_mask(
             input_values, gene_ids=gene_ids)
         datapoint = {"gene_ids": gene_ids, "masked_values": masked_values, "target_values": values,
@@ -283,6 +348,7 @@ class LMDBDataset(Dataset):
 
     def __len__(self):
         return int(self.txn.get(b'__len__').decode("utf-8"))
+        # return 1000
 
     def _binning(self, values):
         non_zero_ids = values.nonzero()
@@ -344,13 +410,14 @@ class LMDBDataset(Dataset):
         masked_values = random_mask_value(values, self.mask_ratio)
 
         if self.graph_sort:
-            # if self.sampling_etype=='ori':
-            #     sorted_gene_ids, sorted_layer_idx,_ = self.topological_sorting(gene_ids,values,sample=self.sampling_g is not None)# the length here would <=max_len
-            # else:
-            #     sorted_gene_ids, sorted_layer_idx,_ = self.topological_sorting(gene_ids,values,sample=True)
-            sorted_gene_ids, sorted_layer_idx, _ = self.topological_sorting(gene_ids, values=None,
-                                                                            sample=self.sampling_g is not None)  # the length here would <=max_len
-            gene_ids, layer_idx, values = self.topological_sorting(gene_ids, values, sample=False)
+            if 'random_sort' in self.args and self.args.random_sort:
+                sorted_gene_ids, sorted_layer_idx, _ = self.random_sorting(gene_ids,
+                                                                           values=None)  # the length here would <=max_len
+                gene_ids, layer_idx, values = self.random_sorting(gene_ids, values)
+            else:
+                sorted_gene_ids, sorted_layer_idx, _ = self.topological_sorting(gene_ids, values=None,
+                                                                                sample=self.sampling_g is not None)  # the length here would <=max_len
+                gene_ids, layer_idx, values = self.topological_sorting(gene_ids, values, sample=False)
             mask_id = self.vocab[self.mask_token]
             if sorted_gene_ids.__len__() < self.max_seq_len:
                 pad_id = self.vocab['<pad>']
@@ -438,6 +505,23 @@ class LMDBDataset(Dataset):
             sorting_values = None
 
         return np.array(sorting_gene_ids), np.array(sort_layer_idx), sorting_values
+
+    def random_sorting(self, gene_ids, values):
+        print('...........test for random sorting.............')
+        print('using random sort.....')
+        import sys
+        sys.exit(-1)
+        gene_ids = np.array(gene_ids)
+        permuted_idx = np.random.permutation(len(gene_ids))
+        sorting_gene_ids = gene_ids[permuted_idx]
+
+        if values is not None:
+            sorting_values = np.array(values)[permuted_idx]
+        else:
+            sorting_values = None
+        max_layer = 10
+        sort_layer_idx = np.random.randint(1, max_layer + 1, size=len(sorting_gene_ids))
+        return sorting_gene_ids, sort_layer_idx, sorting_values
 
 
 class H5adDataset(Dataset):
@@ -622,10 +706,11 @@ def random_mask_value(
     else:
         values = values.copy()
     row = values
-    non_padding_idx = np.nonzero(row - pad_value)[0]
-    n_mask = int(len(non_padding_idx) * mask_ratio)
-    mask_idx = np.random.choice(non_padding_idx, n_mask, replace=False)
-    row[mask_idx] = mask_value
+    if mask_ratio > 0:
+        non_padding_idx = np.nonzero(row - pad_value)[0]
+        n_mask = int(len(non_padding_idx) * mask_ratio)
+        mask_idx = np.random.choice(non_padding_idx, n_mask, replace=False)
+        row[mask_idx] = mask_value
     return row
 
 
@@ -686,7 +771,7 @@ def prepare_cell_data(adata, adata_test, args, vocab,
     )
     genes = adata.var["gene_name"].tolist()
 
-    if args.task in ['Integration','Cell_annotation']:
+    if args.task in ['Integration', 'Cell_annotation']:
         celltypes_labels = adata.obs["celltype_id"].tolist()  # make sure count from 0
         celltypes_labels = np.array(celltypes_labels)
         batch_ids = adata.obs["batch_id"].tolist()
@@ -709,14 +794,14 @@ def prepare_cell_data(adata, adata_test, args, vocab,
         ) = train_test_split(
             all_counts, test_size=0.1, shuffle=True
         )
-        num_batch_types=0
+        num_batch_types = 0
 
     gene_ids = np.array(vocab(genes), dtype=int)
     if args.graph_sort:
         graph = dgl.load_graphs(os.path.join(args.graph_path, 'kb_acyclic_reg_cxg.dgl'))[0][0]
     else:
         graph = None
-
+    random_sort = args.random_sort if 'random_sort' in args else False
     tokenized_train = tokenize_and_pad_batch(
         train_data,
         gene_ids,
@@ -726,7 +811,8 @@ def prepare_cell_data(adata, adata_test, args, vocab,
         pad_value=pad_value,
         append_cls=args.append_cls,  # append <cls> token at the beginning
         include_zero_gene=args.include_zero_gene,
-        graph=graph
+        graph=graph,
+        random_sort=random_sort,
     )
 
     tokenized_valid = tokenize_and_pad_batch(
@@ -800,7 +886,7 @@ def prepare_cell_data(adata, adata_test, args, vocab,
         }
         if args.task in ['Integration', 'Cell_annotation']:
             test_data_pt.update({"batch_labels": torch.from_numpy(batch_ids_test).long(),
-                                  "celltype_labels": torch.from_numpy(celltypes_labels_test).long()})
+                                 "celltype_labels": torch.from_numpy(celltypes_labels_test).long()})
 
     else:
         test_data_pt = None
@@ -855,9 +941,107 @@ def prepare_cell_data(adata, adata_test, args, vocab,
     }
     if args.task in ['Integration', 'Cell_annotation']:
         train_data_pt.update({"batch_labels": tensor_batch_labels_train,
-                              "celltype_labels": tensor_celltype_labels_train,})
+                              "celltype_labels": tensor_celltype_labels_train, })
         valid_data_pt.update({"batch_labels": tensor_batch_labels_valid,
-                              "celltype_labels": tensor_celltype_labels_valid,})
-
+                              "celltype_labels": tensor_celltype_labels_valid, })
 
     return train_data_pt, valid_data_pt, test_data_pt, num_batch_types
+
+
+def prepare_cell_data_for_infer(adata,
+                                args,
+                                vocab,
+                                is_master=True,
+                                mask_value=-1,
+                                pad_value=-2,
+                                logger=None,
+                                sort_seq_batch=False,
+                                pad_token='<pad>'
+                                ):
+    '''
+    Args:
+        adata: adata used for training
+        args:
+        vocab:
+        is_master: does the current GPU act as the master
+        mask_value: specify certain values used as mask value (default: -1)
+        pad_value: specify certain values used as padding value (default: -2)
+        logger:
+        sort_seq_batch:
+        pad_token:
+    Returns:
+    '''
+    input_layer_key = {  # the values of this map coorespond to the keys in preprocessing
+        "normed_raw": "X_normed",
+        "log1p": "X_normed",
+        "binned": "X_binned",
+    }[args.input_style]
+
+    all_counts = (
+        adata.layers[input_layer_key].A
+        if issparse(adata.layers[input_layer_key])
+        else adata.layers[input_layer_key]
+    )
+    celltypes_labels = adata.obs["celltype_id"].tolist()  # make sure count from 0
+    celltypes_labels = np.array(celltypes_labels)
+    batch_ids = adata.obs["batch_id"].tolist()
+    num_batch_types = len(set(batch_ids))
+    batch_ids = np.array(batch_ids)
+    genes = adata.var["gene_name"].tolist()
+    gene_ids = np.array(vocab(genes), dtype=int)
+    if args.graph_sort:
+        graph = dgl.load_graphs(os.path.join(args.graph_path, 'kb_acyclic_reg_cxg.dgl'))[0][0]
+    else:
+        graph = None
+    random_sort = args.random_sort if 'random_sort' in args else False
+    tokenized_train = tokenize_and_pad_batch(
+        all_counts,
+        gene_ids,
+        max_len=args.max_seq_len,
+        vocab=vocab,
+        pad_token=pad_token,
+        pad_value=pad_value,
+        append_cls=args.append_cls,  # append <cls> token at the beginning
+        include_zero_gene=args.include_zero_gene,
+        graph=graph,
+        random_sort=random_sort
+
+    )
+    if is_master:
+        logger.info(
+            f"train set number of samples: {tokenized_train['genes'].shape[0]}, "
+            f"\n\t feature length: {tokenized_train['genes'].shape[1]}"
+        )
+    masked_values_train = torch.from_numpy(random_mask_value(
+        tokenized_train["values"],
+        mask_ratio=args.mask_ratio,
+        mask_value=mask_value,
+        pad_value=pad_value,
+    )).float()
+    if is_master:
+        print(
+            f"Ratio of masked values in train: ",
+            f"{(masked_values_train == mask_value).sum() / (masked_values_train - pad_value).count_nonzero():.4f}",
+        )
+    input_gene_ids_train = tokenized_train["genes"]
+    input_values_train = masked_values_train
+    target_values_train = tokenized_train["values"]
+    tensor_batch_labels_train = torch.from_numpy(batch_ids).long()
+    tensor_celltype_labels_train = torch.from_numpy(celltypes_labels).long()
+    if sort_seq_batch:  # TODO: update to random pick seq source in each traning batch
+        train_sort_ids = np.argsort(celltypes_labels)
+        input_gene_ids_train = input_gene_ids_train[train_sort_ids]
+        input_values_train = input_values_train[train_sort_ids]
+        target_values_train = target_values_train[train_sort_ids]
+        tensor_batch_labels_train = tensor_batch_labels_train[train_sort_ids]
+        tensor_celltype_labels_train = tensor_celltype_labels_train[train_sort_ids]
+
+    train_data_pt = {
+        "gene_ids": input_gene_ids_train,
+        "values": input_values_train,
+        "target_values": target_values_train,
+        "sorted_layer_idx": tokenized_train["sorted_layer_idx"],
+        "batch_labels": tensor_batch_labels_train,
+        "celltype_labels": tensor_celltype_labels_train
+    }
+    return train_data_pt
