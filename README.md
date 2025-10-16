@@ -129,7 +129,6 @@ If you use **RegFormer** in your research, please cite:
 
 **Author:** Luni Hu, Ph.D.  
 **Affiliation:** BGI Research
-**Email:** [huluni@bgi.com]  
 ---
 
 🧠 *RegFormer — Foundation Modeling Meets Gene Regulation*
