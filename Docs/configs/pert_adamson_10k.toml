@@ -1,0 +1,76 @@
+bimamba_type='none'     #type of bimamba: ['v1','v2','none']
+distributed=false   #current script is unavailable for distributed training, always set to false plz
+MVC=true  #contrastive cell embedding objective
+
+# ablation params
+graph_sort=true
+device='cuda'   #device for training
+test_size=0.2
+lr=1e-4
+log_interval=10
+save_eval_interval=5
+schedule_ratio=0.9      #ratio of epochs for learning rate schedule
+do_train=true   #Train or inference
+
+seed=42
+dropout=0.2
+layer_size = 512
+nlayers = 10
+mask_ratio=0
+pre_norm=false  #normalize previously
+finetune=true
+freeze=false    #freeze the backbone during finetuning
+amp=true    #Automatic Mixed Precision
+token_emb_freeze=false      #freezing token-emb when predicting value
+sampling_etype='ori'     #choice of edge type when sampling: ['share_pathway_with','interact_with','co_expression','ori']
+layer_mask=false        #using layer mask or not when using graph sort
+layer_emb=true
+
+#######dir
+save_dir='/home/share/huadjyin/home/s_huluni/gzh/RegFormer/case/tutorials/pert/saves'
+vocab_file='/home/share/huadjyin/home/s_huluni/project/RegFormer/case/graph/data/vocab/vocab.json'
+
+#######data config
+cell_type_column='cell_type'
+gene_column='feature_name'  #set to "none" or specific column-name based on your requirement
+umap_column='none'    #set to "none" or specific column-name based on your requirement
+pca_column='none'      #set to "none" or specific column-name based on your requirement
+data_is_raw=false
+filter_gene_by_counts=false
+DSBN=false
+
+input_emb_style='continuous'    #the style of input emb：['continuous','category','scaling']
+cell_emb_style='avg-pool'   #method for generating cell emb: ['final','cls','avg-pool','w-pol','attn']
+n_bins=51
+append_cls=false    #append <cls> token as first token
+per_seq_batch_sample=false      #whether sort the adata by batch_id
+include_zero_gene=false     #whether include gene with zero expression value
+input_style='binned'       #input representation: ['binned','normed_raw','log1p']
+output_style='binned'       #output representation: ['binned','normed_raw','log1p']
+
+# gears args
+split = 'simulation'
+train_gene_set_size=0.75
+batch_size=32
+test_batch_size=128
+pretrained_emb_size = 512 # same with pretrain
+hidden_size = 64 # same with pretrain
+epochs = 10
+use_pretrained = true
+pretrain_freeze = false
+
+run_name = "pert_adamson_10k"
+load_model = "/home/share/huadjyin/home/s_huluni/project/RegFormer/case/02_pretrain/models/Pretraining/cellxgene/mamba/pt_graph_sort_avg_pool_all_length"
+data_name = "adamson"
+model_name = "pt_graph_sort_avg_pool_all_length"
+data_path = "/home/share/huadjyin/home/s_huluni/project/RegFormer/case/ablation/data/pert/adamson"
+MLM = true
+TOPO = true
+random_sort = false
+generative_pretraining = true
+only_value_emb = false
+max_seq_len = 10000
+alpha_mlm = 0.1
+alpha_topo = 1.0
+graph_path = "/home/share/huadjyin/home/s_huluni/project/RegFormer/case/graph/out/cistarget_top20/output_graph_no_cycles.dgl"
+swanlab=true

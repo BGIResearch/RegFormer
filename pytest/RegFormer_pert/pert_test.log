@@ -1,0 +1,15 @@
+2025-10-15 15:19:03,824 - TestPertTask - INFO - ==================== Starting Perturbation Task Test Suite ====================
+2025-10-15 15:19:03,836 - TestPertTask - INFO - STEP 0: Initializing PertTaskMamba instance...
+2025-10-15 15:19:06,961 - TestPertTask - INFO - STEP 0: Initialization complete.
+2025-10-15 15:19:06,962 - TestPertTask - INFO - --- Pert [Step 1/4]: Testing perturbation data preparation ---
+2025-10-15 15:19:56,643 - TestPertTask - INFO - --- Pert [Step 1/4]: PASSED ✅ ---
+2025-10-15 15:19:56,644 - TestPertTask - INFO - --- Pert [Step 2/4]: Testing universal gene embedding creation ---
+2025-10-15 15:19:57,103 - TestPertTask - INFO - --- Pert [Step 2/4]: PASSED ✅ ---
+2025-10-15 15:19:57,103 - TestPertTask - INFO - --- Pert [Step 3/4]: Testing GEARS model initialization and training ---
+2025-10-15 15:22:37,630 - TestPertTask - INFO - Saving the best model...
+2025-10-15 15:22:37,738 - TestPertTask - INFO - --- Pert [Step 3/4]: PASSED ✅ ---
+2025-10-15 15:22:37,738 - TestPertTask - INFO - --- Pert [Step 4/4]: Testing model evaluation ---
+2025-10-15 15:22:44,607 - TestPertTask - INFO - --- Pert [Step 4/4]: PASSED ✅ ---
+2025-10-15 15:22:44,608 - TestPertTask - INFO - Cleaning up resources for Perturbation Task...
+2025-10-15 15:22:44,636 - TestPertTask - INFO - Temporary directory successfully removed.
+2025-10-15 15:22:44,636 - TestPertTask - INFO - ==================== Perturbation Task Test Suite Finished ====================

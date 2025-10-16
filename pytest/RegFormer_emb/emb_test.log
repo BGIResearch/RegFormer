@@ -1,0 +1,18 @@
+2025-10-15 15:23:13,276 - TestEmbTask - INFO - ==================== Starting Embedding Task Test Suite ====================
+2025-10-15 15:23:13,285 - TestEmbTask - INFO - STEP 0: Initializing EmbTaskMamba instance...
+2025-10-15 15:23:13,389 - TestEmbTask - INFO - STEP 0: Initialization complete.
+2025-10-15 15:23:13,389 - TestEmbTask - INFO - --- Emb [Step 1/4]: Testing data and model loading ---
+2025-10-15 15:24:17,887 - TestEmbTask - INFO - --- Emb [Step 1/4]: PASSED ✅ ---
+2025-10-15 15:24:17,887 - TestEmbTask - INFO - --- Emb [Step 2/4]: Testing inference loop to generate embeddings ---
+2025-10-15 15:44:37,515 - TestEmbTask - INFO - --- Emb [Step 2/4]: PASSED ✅ ---
+2025-10-15 15:44:37,517 - TestEmbTask - INFO - --- Emb [Step 3/4]: Testing embedding refinement and saving ---
+2025-10-15 15:44:37,760 - TestEmbTask - INFO - --- Emb [Step 3/4]: PASSED ✅ ---
+2025-10-15 15:44:37,761 - TestEmbTask - INFO - --- Emb [Step 4/4]: Testing result organization and visualization ---
+2025-10-15 15:44:57,923 - TestEmbTask - INFO - --- Emb [Step 4/4]: PASSED ✅ ---
+2025-10-15 15:44:57,924 - TestEmbTask - INFO - Cleaning up resources for Embedding Task...
+2025-10-15 15:44:57,948 - TestEmbTask - INFO - ==================== Embedding Task Test Suite Finished ====================
+
+----------------------------------------------------------------------
+Ran 4 tests in 1304.673s
+
+OK

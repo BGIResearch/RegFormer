@@ -1,0 +1,24 @@
+2025-09-09 11:17:48,105 - TestPretrainTask - INFO - ==================== Starting Pre-training Task Test Suite ====================
+2025-09-09 11:17:48,140 - TestPretrainTask - INFO - STEP 0: Initializing PretrainTaskScMamba instance...
+2025-09-09 11:17:48,283 - torch.distributed.distributed_c10d - INFO - Added key: store_based_barrier_key:1 to store for rank: 0
+2025-09-09 11:17:48,283 - torch.distributed.distributed_c10d - INFO - Rank 0: Completed store-based barrier for key:store_based_barrier_key:1 with 1 nodes.
+2025-09-09 11:17:52,735 - TestPretrainTask - INFO - STEP 0: Initialization complete.
+2025-09-09 11:17:52,736 - TestPretrainTask - INFO - --- Pretrain [Step 1/5]: Testing data and model loading ---
+2025-09-09 11:17:57,662 - TestPretrainTask - INFO - --- Pretrain [Step 1/5]: PASSED ✅ ---
+2025-09-09 11:17:57,663 - TestPretrainTask - INFO - --- Pretrain [Step 2/5]: Testing criterion and optimizer setup ---
+2025-09-09 11:17:57,664 - TestPretrainTask - INFO - --- Pretrain [Step 2/5]: PASSED ✅ ---
+2025-09-09 11:17:57,664 - TestPretrainTask - INFO - --- Pretrain [Step 3/5]: Testing training for 100 batches ---
+2025-09-09 11:17:57,665 - TestPretrainTask - INFO - Using a limited loader that will only yield 200 batches.
+2025-09-09 11:18:29,431 - TestPretrainTask - INFO - --- Pretrain [Step 3/5]: PASSED ✅ ---
+2025-09-09 11:18:29,833 - TestPretrainTask - INFO - --- Pretrain [Step 4/5]: Testing evaluation for one epoch ---
+2025-09-09 11:18:29,834 - TestPretrainTask - INFO - Using a limited validation loader that will only yield 50 batches.
+2025-09-09 11:18:32,725 - TestPretrainTask - INFO - --- Pretrain [Step 4/5]: PASSED ✅ ---
+2025-09-09 11:18:32,735 - TestPretrainTask - INFO - --- Pretrain [Step 5/5]: Verifying output files ---
+2025-09-09 11:18:33,298 - TestPretrainTask - INFO - --- Pretrain [Step 5/5]: PASSED ✅ ---
+2025-09-09 11:18:33,298 - TestPretrainTask - INFO - Cleaning up resources for Pre-training Task...
+2025-09-09 11:18:34,546 - TestPretrainTask - INFO - ==================== Pre-training Task Test Suite Finished ====================
+
+----------------------------------------------------------------------
+Ran 5 tests in 46.442s
+
+OK

@@ -1,0 +1,23 @@
+2025-10-14 11:31:27,043 - TestAnnoTaskPipeline - INFO - ==================== Starting Annotation Task Test Suite ====================
+2025-10-14 11:31:27,054 - TestAnnoTaskPipeline - INFO - STEP 0: Initializing AnnoTaskMamba instance...
+2025-10-14 11:31:27,200 - TestAnnoTaskPipeline - INFO - STEP 0: Initialization complete.
+2025-10-14 11:31:27,200 - TestAnnoTaskPipeline - INFO - --- Anno [Step 1/5]: Testing data and model loading ---
+2025-10-14 11:31:37,813 - TestAnnoTaskPipeline - INFO - --- Anno [Step 1/5]: PASSED ✅ ---
+2025-10-14 11:31:37,814 - TestAnnoTaskPipeline - INFO - --- Anno [Step 2/5]: Testing criterion and optimizer setup ---
+2025-10-14 11:31:37,814 - TestAnnoTaskPipeline - INFO - --- Anno [Step 2/5]: PASSED ✅ ---
+2025-10-14 11:31:37,815 - TestAnnoTaskPipeline - INFO - --- Anno [Step 3/5]: Testing training and evaluation for one epoch ---
+2025-10-14 11:31:52,363 - TestAnnoTaskPipeline - INFO - --- Anno [Step 3/5]: PASSED ✅ ---
+2025-10-14 11:31:52,363 - TestAnnoTaskPipeline - INFO - --- Anno [Step 4/5]: Testing with the final model and organizing results ---
+2025-10-14 11:31:54,421 - TestAnnoTaskPipeline - INFO - --- Anno [Step 4/5]: PASSED ✅ ---
+2025-10-14 11:31:54,421 - TestAnnoTaskPipeline - INFO - --- Anno [Step 5/5]: Testing model saving ---
+2025-10-14 11:31:54,663 - TestAnnoTaskPipeline - INFO - --- Anno [Step 5/5]: PASSED ✅ ---
+2025-10-14 11:31:54,664 - TestAnnoTaskPipeline - INFO - Cleaning up resources...
+2025-10-14 11:31:54,664 - TestAnnoTaskPipeline - INFO - Closing custom file logger to release 'run.log'...
+2025-10-14 11:31:54,665 - TestAnnoTaskPipeline - INFO - Cleaning up temporary directory...
+2025-10-14 11:31:54,681 - TestAnnoTaskPipeline - INFO - Temporary directory successfully removed.
+2025-10-14 11:31:54,681 - TestAnnoTaskPipeline - INFO - ==================== Annotation Task Test Suite Finished ====================
+
+----------------------------------------------------------------------
+Ran 5 tests in 27.638s
+
+OK

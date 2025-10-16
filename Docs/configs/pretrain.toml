@@ -1,0 +1,72 @@
+task='Pretraining'
+data_name='cellxgene'   #['panglao','cellxgene']
+model_name = "mamba"    #['gpt','mamba','bimamba']
+do_train=true   #Train or inference
+do_pretrain=true
+bimamba_type='none'     #type of bimamba: ['v1','v2','none']
+distributed= false   #current script is unavailable for distributed training, always set to false plz
+MLM=true    #whether to use masked language modeling, for the value prediction
+MVC=true   #contrastive cell embedding objective
+TOPO=true
+
+# ablation params
+run_name='regformer_pretrain_test'    #name of experiment.
+graph_sort=true     #using graph topological sorting
+random_sort=false
+generative_pretraining=true    #using generative token precidtion in pretraining or masked token prediction in pretraining
+only_value_emb=false  # using single embedding for value prediction, for the ablation study
+alpha_mlm = 0.1
+alpha_topo = 1
+alpha_mvc = 0.5
+epochs=1
+test_size=0.2
+lr=0.00001
+seed=42
+dropout=0.2
+batch_size=4
+layer_size=512
+nlayers=10
+mask_ratio=0.4
+pre_norm=false  #normalize previously
+freeze=false    #freeze the backbone during finetuning
+log_interval=100
+ckpt_interval=1000
+save_eval_interval=1
+schedule_ratio=0.9      #ratio of epochs for learning rate schedule
+amp=true    #Automatic Mixed Precision
+token_emb_freeze=false      #freezing token-emb when predicting value
+sampling_etype = "ori"     #choice of edge type when sampling: ['share_pathway_with','interact_with','co_expression','ori']
+layer_mask=false        #using layer mask or not when using graph sort
+layer_emb=true         # using layer emb or not when using graph sort
+resume_batch = 0
+
+#######dir
+data_path='/home/share/huadjyin/home/s_qiuping1/workspace/RegFormer/example/data'
+load_model="/home/share/huadjyin/home/s_huluni/project/RegFormer/case/02_pretrain/models/Pretraining/cellxgene/mamba/pt_graph_sort_avg_pool_e1"    #from_scratch: false
+save_dir='/home/share/huadjyin/home/s_huluni/gzh/RegFormer/Docs/Results/pretrain'  #Directory of checkpoint and result to save
+vocab_file='/home/share/huadjyin/home/s_huluni/project/RegFormer/case/graph/data/vocab/vocab.json'
+graph_path='/home/share/huadjyin/home/s_huluni/project/RegFormer/case/graph/out/cistarget_top20/output_graph_no_cycles.dgl'
+lmdb=true       # use lmdb dataset or not
+lmdb_path='/home/share/huadjyin/home/s_huluni/project/RegFormer/case/01_data/train.db' #Path of source lmdb&h5ad data
+val_lmdb_path='/home/share/huadjyin/home/s_huluni/project/RegFormer/case/01_data/cxg/2adb1f8a-a6b1-4909-8ee8-484814e2d4bf.db' #Path of source lmdb&h5ad data
+
+#######data config
+cell_type_column='celltype'
+batch_column='batch'
+gene_column='none'  #set to "none" or specific column-name based on your requirement
+umap_column='none'    #set to "none" or specific column-name based on your requirement
+pca_column='none'      #set to "none" or specific column-name based on your requirement
+data_is_raw=false
+filter_gene_by_counts=false
+DSBN=false
+
+input_emb_style='continuous'    #the style of input emb：['continuous','category','scaling']
+cell_emb_style='avg-pool'   #method for generating cell emb: ['final','cls','avg-pool','w-pol','attn']
+mvc_decoder_style='inner product'   #architecture style of the decoder:['inner product','concat query','sum query']
+n_bins=51
+append_cls=false    #append <cls> token as first token
+per_seq_batch_sample=false      #whether sort the adata by batch_id
+include_zero_gene=false     #whether include gene with zero expression value
+input_style='binned'       #input representation: ['binned','normed_raw','log1p']
+output_style='binned'       #output representation: ['binned','normed_raw','log1p']
+max_seq_len=1200

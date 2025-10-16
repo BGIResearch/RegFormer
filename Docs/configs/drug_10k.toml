@@ -1,0 +1,93 @@
+bimamba_type='none'     #type of bimamba: ['v1','v2','none']
+distributed=false   #current script is unavailable for distributed training, always set to false plz
+MVC=true  #contrastive cell embedding objective
+
+# ablation params
+graph_sort=true
+device='cuda:3'   #device for training
+epochs=100
+test_size=0.2
+lr = 1e-4
+log_interval=10
+save_eval_interval=5
+schedule_ratio=0.9      #ratio of epochs for learning rate schedule
+do_train=true   #Train or inference
+
+seed=42
+dropout=0.2
+layer_size=512
+nlayers=10
+mask_ratio=0
+pre_norm=false  #normalize previously
+freeze=false    #freeze the backbone during finetuning
+amp=true    #Automatic Mixed Precision
+token_emb_freeze=false      #freezing token-emb when predicting value
+sampling_etype='ori'     #choice of edge type when sampling: ['share_pathway_with','interact_with','co_expression','ori']
+layer_mask=false        #using layer mask or not when using graph sort
+layer_emb=true
+batch_size = 8
+#######dira
+save_dir='/home/share/huadjyin/home/s_huluni/gzh/RegFormer/case/tutorials/drug/saves'
+vocab_file='/home/share/huadjyin/home/s_huluni/project/RegFormer/case/graph/data/vocab/vocab.json'
+
+#######data config
+cell_type_column='cell_type'
+batch_column=""
+gene_column='none'  #set to "none" or specific column-name based on your requirement
+umap_column='none'    #set to "none" or specific column-name based on your requirement
+pca_column='none'      #set to "none" or specific column-name based on your requirement
+data_is_raw=false
+filter_gene_by_counts=false
+DSBN=false
+
+input_emb_style='continuous'    #the style of input emb：['continuous','category','scaling']
+cell_emb_style='avg-pool'   #method for generating cell emb: ['final','cls','avg-pool','w-pol','attn']
+n_bins=51
+append_cls=false    #append <cls> token as first token
+per_seq_batch_sample=false      #whether sort the adata by batch_id
+include_zero_gene=false     #whether include gene with zero expression value
+input_style='binned'       #input representation: ['binned','normed_raw','log1p']
+output_style='binned'       #output representation: ['binned','normed_raw','log1p']
+
+# path related
+data_path = "none"
+drug_smiles_file = '/home/share/huadjyin/home/s_jiangwenjian/proj/scLLM/deepcdr/torchData/223drugs_pubchem_smiles.txt'
+drug_feature_file = '/home/share/huadjyin/home/s_jiangwenjian/proj/scLLM/deepcdr/torchData/GDSC/drug_graph_feat'
+drug_info_file = '/home/share/huadjyin/home/s_jiangwenjian/proj/scLLM/deepcdr/torchData/GDSC/1.Drug_listMon Jun 24 09_00_55 2019.csv'
+cell_line_info_file = '/home/share/huadjyin/home/s_jiangwenjian/proj/scLLM/deepcdr/torchData/CCLE/Cell_lines_annotations_20181226.txt'
+cancer_response_exp_file = '/home/share/huadjyin/home/s_jiangwenjian/proj/scLLM/deepcdr/torchData/CCLE/GDSC_IC50.csv'
+# expression / mutation / methylation
+use_gexp = true
+use_mut = false
+use_methy = false
+gene_expression_file = '/home/share/huadjyin/home/s_jiangwenjian/proj/scLLM/deepcdr/torchData/CCLE/genomic_expression_561celllines_697genes_demap_features.csv'
+genomic_mutation_file = '/home/share/huadjyin/home/s_jiangwenjian/proj/scLLM/deepcdr/torchData/CCLE/genomic_mutation_34673_demap_features.csv'
+methylation_file = '/home/share/huadjyin/home/s_jiangwenjian/proj/scLLM/deepcdr/torchData/CCLE/genomic_methylation_561celllines_808genes_demap_features.csv'
+
+# deepCDR params
+# mode
+mode = 'train'
+leave_drug_test = false
+leave_drug = 0
+# params
+israndom = false  # randomlize X and A
+# hyparameters for GCN
+unit_list = [256,256,256]
+use_bn = true   # use batchnormalization for GCN
+use_relu = true
+use_GMP =true    # use GlobalMaxPooling for GCN
+max_atoms = 100
+
+run_name = "drug_10k"
+load_model = "/home/share/huadjyin/home/s_huluni/project/RegFormer/case/02_pretrain/models/Pretraining/cellxgene/mamba/pt_graph_sort_avg_pool_all_length"
+model_name = "RegFormer-10k"
+MLM = true
+TOPO = true
+random_sort = false
+generative_pretraining = true
+only_value_emb = false
+max_seq_len = 10000
+alpha_mlm = 0.1
+alpha_topo = 1.0
+graph_path = "/home/share/huadjyin/home/s_huluni/project/RegFormer/case/graph/out/cistarget_top20/output_graph_no_cycles.dgl"
+n_hvg = -1
