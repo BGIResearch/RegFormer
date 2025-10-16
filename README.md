@@ -1,4 +1,4 @@
-# 🧬 RegFormer: A Single-Cell Foundation Model Powered by Gene Regulatory Network
+#  RegFormer: A Single-Cell Foundation Model Powered by Gene Regulatory Network
 
 **RegFormer** is a foundation model designed for large-scale single-cell RNA-seq analysis.  
 It integrates **Gene Regulatory Network (GRN)** priors with a **Mamba state-space architecture**, enabling efficient long-sequence modeling and biologically interpretable representation learning across diverse downstream tasks.
