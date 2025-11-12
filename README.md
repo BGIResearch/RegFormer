@@ -69,7 +69,7 @@ conda create -n regformer python=3.9
 conda activate regformer
 pip install -r requirements.txt
 ```
-
+- Installation Time：Estimated installation time is approximately 45 minutes.
 ---
 
 ## 🧠 Pretraining
@@ -123,13 +123,6 @@ If you use **RegFormer** in your research, please cite:
 
 > Hu, L. et al. *RegFormer: A Single-Cell Foundation Model Powered by Gene Regulatory Network.* (2025)
 
----
-
-## 📬 Contact
-
-**Author:** Luni Hu, Ph.D.  
-**Affiliation:** BGI Research
-**Email:** [huluni@bgi.com]  
 ---
 
 🧠 *RegFormer — Foundation Modeling Meets Gene Regulation*
