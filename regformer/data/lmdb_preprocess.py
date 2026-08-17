@@ -126,7 +126,7 @@ class LmdbHelper(object):
         if adata.X.min() >= 0:
             normalize_total = False
             log1p = False
-            if adata.X.max() > 20:
+            if adata.X.max() > 25:
                 log1p = True
                 if adata.X.max() - np.int32(adata.X.max()) == np.int32(0):
                     normalize_total = 1e4
